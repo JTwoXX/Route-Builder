@@ -21,7 +21,9 @@
       "Bash(railway service:*)",
       "Bash(railway logs:*)",
       "Bash(railway --help:*)",
-      "Bash(railway open:*)"
+      "Bash(railway open:*)",
+      "Bash(git push)",
+      "Bash(npm run build:*)"
     ]
   }
 }

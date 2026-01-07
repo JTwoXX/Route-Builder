@@ -9,7 +9,6 @@ import { AddStopForm } from './AddStopForm';
 import { OptimizationPanel } from './OptimizationPanel';
 import { CSVImport } from './CSVImport';
 import { SaveRouteDialog } from './SaveRouteDialog';
-import { SavedRoutesList } from './SavedRoutesList';
 import type { RouteStats } from '@/lib/types';
 
 interface RoutePanelProps {
