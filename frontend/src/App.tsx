@@ -2,7 +2,9 @@ import { useState, useCallback, useEffect, useMemo } from 'react';
 import { Map, MapControls, MapMarker, MarkerContent, MapRoute, useMap } from "@/components/ui/map";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { RoutePanel } from "@/features/routes/RoutePanel";
+import { Traffic } from "@/components/TrafficLayer";
 import { useRouteStore } from "@/stores/routeStore";
+import { reverseGeocode } from "@/lib/api/tomtom";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import './App.css';
 
@@ -62,9 +64,12 @@ function App() {
   const addStop = useRouteStore((s) => s.addStop);
   const settings = useRouteStore((s) => s.optimizationSettings);
 
-  const handleMapClick = useCallback((lat: number, lng: number) => {
+  const handleMapClick = useCallback(async (lat: number, lng: number) => {
+    // Try to reverse geocode the clicked location
+    const address = await reverseGeocode(lat, lng);
+
     addStop({
-      address: `${lat.toFixed(5)}, ${lng.toFixed(5)}`,
+      address: address || `${lat.toFixed(5)}, ${lng.toFixed(5)}`,
       latitude: lat,
       longitude: lng,
     });
@@ -116,6 +121,9 @@ function App() {
           >
             <MapControls position="bottom-right" showZoom showLocate showFullscreen />
             <MapClickHandler enabled={addingByClick} onMapClick={handleMapClick} />
+
+            {/* Traffic Layer with Controls */}
+            <Traffic controlsPosition="top-left" />
 
             {/* Route Line */}
             {routeCoordinates.length >= 2 && (
