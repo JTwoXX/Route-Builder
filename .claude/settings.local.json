@@ -23,7 +23,12 @@
       "Bash(railway --help:*)",
       "Bash(railway open:*)",
       "Bash(git push)",
-      "Bash(npm run build:*)"
+      "Bash(npm run build:*)",
+      "Bash(ls -la \"A:\\\\AI PROJECTS\\\\Route-Builder\\\\frontend\"\" | grep -E \"^.env)",
+      "Bash(.env \")",
+      "Bash(dir:*)",
+      "Bash(railway variables set:*)",
+      "Bash(railway variables:*)"
     ]
   }
 }
