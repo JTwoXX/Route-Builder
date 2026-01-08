@@ -1,8 +1,9 @@
 import { useState } from 'react';
-import { Plus, MapPin, Search, ClipboardPaste, ChevronUp } from 'lucide-react';
+import { Plus, MapPin, ClipboardPaste, ChevronUp, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
+import { AddressAutocomplete } from '@/components/AddressAutocomplete';
 import { useRouteStore } from '@/stores/routeStore';
+import { geocodeAddress, type SearchSuggestion } from '@/lib/api/tomtom';
 
 interface AddStopFormProps {
     onAddByClick?: () => void;
@@ -13,29 +14,55 @@ export function AddStopForm({ onAddByClick, defaultServiceTime = 5 }: AddStopFor
     const [address, setAddress] = useState('');
     const [batchMode, setBatchMode] = useState(false);
     const [batchAddresses, setBatchAddresses] = useState('');
+    const [isGeocoding, setIsGeocoding] = useState(false);
     const addStop = useRouteStore((s) => s.addStop);
+    const stops = useRouteStore((s) => s.stops);
 
-    const handleSubmit = (e: React.FormEvent) => {
-        e.preventDefault();
-        if (!address.trim()) return;
+    // Get center coordinates to bias autocomplete results
+    const biasLocation = stops.length > 0
+        ? {
+            lat: stops.reduce((sum, s) => sum + s.latitude, 0) / stops.length,
+            lon: stops.reduce((sum, s) => sum + s.longitude, 0) / stops.length,
+        }
+        : { lat: 40.7128, lon: -74.006 }; // Default to NYC
 
-        // For demo: generate random coordinates near NYC
-        const baseLat = 40.7128;
-        const baseLng = -74.006;
-        const randomLat = baseLat + (Math.random() - 0.5) * 0.1;
-        const randomLng = baseLng + (Math.random() - 0.5) * 0.1;
-
+    // Handle selection from autocomplete
+    const handleSelectSuggestion = (suggestion: SearchSuggestion) => {
         addStop({
-            address: address.trim(),
-            latitude: randomLat,
-            longitude: randomLng,
+            address: suggestion.address,
+            latitude: suggestion.latitude,
+            longitude: suggestion.longitude,
             serviceTime: defaultServiceTime,
         });
-
         setAddress('');
     };
 
-    const handleBatchAdd = () => {
+    // Handle manual form submission (geocode the address)
+    const handleSubmit = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!address.trim()) return;
+
+        setIsGeocoding(true);
+        try {
+            const result = await geocodeAddress(address);
+            if (result) {
+                addStop({
+                    address: result.formattedAddress,
+                    latitude: result.latitude,
+                    longitude: result.longitude,
+                    serviceTime: defaultServiceTime,
+                });
+                setAddress('');
+            } else {
+                // If geocoding fails, show an alert
+                alert('Could not find this address. Please try a more specific address or select from the suggestions.');
+            }
+        } finally {
+            setIsGeocoding(false);
+        }
+    };
+
+    const handleBatchAdd = async () => {
         if (!batchAddresses.trim()) return;
 
         // Split by newlines, filter empty lines
@@ -44,23 +71,31 @@ export function AddStopForm({ onAddByClick, defaultServiceTime = 5 }: AddStopFor
             .map(a => a.trim())
             .filter(a => a.length > 0);
 
-        const baseLat = 40.7128;
-        const baseLng = -74.006;
+        setIsGeocoding(true);
+        let successCount = 0;
 
-        addresses.forEach((addr) => {
-            const randomLat = baseLat + (Math.random() - 0.5) * 0.15;
-            const randomLng = baseLng + (Math.random() - 0.5) * 0.15;
+        try {
+            for (const addr of addresses) {
+                const result = await geocodeAddress(addr);
+                if (result) {
+                    addStop({
+                        address: result.formattedAddress,
+                        latitude: result.latitude,
+                        longitude: result.longitude,
+                        serviceTime: defaultServiceTime,
+                    });
+                    successCount++;
+                }
+            }
 
-            addStop({
-                address: addr,
-                latitude: randomLat,
-                longitude: randomLng,
-                serviceTime: defaultServiceTime,
-            });
-        });
-
-        setBatchAddresses('');
-        setBatchMode(false);
+            if (successCount < addresses.length) {
+                alert(`Added ${successCount} of ${addresses.length} addresses. Some addresses could not be geocoded.`);
+            }
+        } finally {
+            setBatchAddresses('');
+            setBatchMode(false);
+            setIsGeocoding(false);
+        }
     };
 
     return (
@@ -68,17 +103,25 @@ export function AddStopForm({ onAddByClick, defaultServiceTime = 5 }: AddStopFor
             {!batchMode ? (
                 <>
                     <form onSubmit={handleSubmit} className="flex gap-2">
-                        <div className="relative flex-1">
-                            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                            <Input
-                                placeholder="Enter address..."
-                                value={address}
-                                onChange={(e) => setAddress(e.target.value)}
-                                className="pl-9"
-                            />
-                        </div>
-                        <Button type="submit" size="icon" disabled={!address.trim()}>
-                            <Plus className="h-4 w-4" />
+                        <AddressAutocomplete
+                            value={address}
+                            onChange={setAddress}
+                            onSelect={handleSelectSuggestion}
+                            placeholder="Enter address..."
+                            className="flex-1"
+                            disabled={isGeocoding}
+                            biasLocation={biasLocation}
+                        />
+                        <Button
+                            type="submit"
+                            size="icon"
+                            disabled={!address.trim() || isGeocoding}
+                        >
+                            {isGeocoding ? (
+                                <Loader2 className="h-4 w-4 animate-spin" />
+                            ) : (
+                                <Plus className="h-4 w-4" />
+                            )}
                         </Button>
                     </form>
 
@@ -109,6 +152,7 @@ export function AddStopForm({ onAddByClick, defaultServiceTime = 5 }: AddStopFor
                             variant="ghost"
                             size="sm"
                             onClick={() => setBatchMode(false)}
+                            disabled={isGeocoding}
                         >
                             <ChevronUp className="h-4 w-4" />
                         </Button>
@@ -123,21 +167,30 @@ Example:
 789 Elm Rd, Queens, NY"
                         value={batchAddresses}
                         onChange={(e) => setBatchAddresses(e.target.value)}
+                        disabled={isGeocoding}
                     />
+                    <p className="text-xs text-muted-foreground">
+                        Each address will be geocoded to get precise coordinates.
+                    </p>
                     <div className="flex gap-2">
                         <Button
                             variant="outline"
                             className="flex-1"
                             onClick={() => setBatchMode(false)}
+                            disabled={isGeocoding}
                         >
                             Cancel
                         </Button>
                         <Button
                             className="flex-1"
                             onClick={handleBatchAdd}
-                            disabled={!batchAddresses.trim()}
+                            disabled={!batchAddresses.trim() || isGeocoding}
                         >
-                            <Plus className="h-4 w-4 mr-1" />
+                            {isGeocoding ? (
+                                <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                            ) : (
+                                <Plus className="h-4 w-4 mr-1" />
+                            )}
                             Add {batchAddresses.split('\n').filter(a => a.trim()).length} stops
                         </Button>
                     </div>
