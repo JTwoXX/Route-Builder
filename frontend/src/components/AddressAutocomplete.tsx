@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { Search, MapPin, Loader2, AlertCircle } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { searchAddress, isTomTomConfigured, type SearchSuggestion } from '@/lib/api/tomtom';
@@ -28,11 +29,25 @@ export function AddressAutocomplete({
   const [isLoading, setIsLoading] = useState(false);
   const [isOpen, setIsOpen] = useState(false);
   const [highlightedIndex, setHighlightedIndex] = useState(-1);
+  const [dropdownPosition, setDropdownPosition] = useState({ top: 0, left: 0, width: 0 });
   const containerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const dropdownRef = useRef<HTMLDivElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const isConfigured = isTomTomConfigured();
+
+  // Update dropdown position when open
+  useEffect(() => {
+    if (isOpen && containerRef.current) {
+      const rect = containerRef.current.getBoundingClientRect();
+      setDropdownPosition({
+        top: rect.bottom + window.scrollY,
+        left: rect.left + window.scrollX,
+        width: rect.width,
+      });
+    }
+  }, [isOpen, suggestions]);
 
   // Debounced search function
   const searchDebounced = useCallback(
@@ -118,9 +133,12 @@ export function AddressAutocomplete({
   // Close dropdown on outside click
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as Node;
       if (
         containerRef.current &&
-        !containerRef.current.contains(event.target as Node)
+        !containerRef.current.contains(target) &&
+        dropdownRef.current &&
+        !dropdownRef.current.contains(target)
       ) {
         setIsOpen(false);
       }
@@ -138,6 +156,52 @@ export function AddressAutocomplete({
       }
     };
   }, []);
+
+  // Render dropdown using portal to escape overflow:hidden containers
+  const renderDropdown = () => {
+    if (!isOpen || suggestions.length === 0) return null;
+
+    return createPortal(
+      <div
+        ref={dropdownRef}
+        className="fixed z-[9999] rounded-md border bg-popover shadow-lg overflow-hidden"
+        style={{
+          top: dropdownPosition.top,
+          left: dropdownPosition.left,
+          width: dropdownPosition.width,
+        }}
+      >
+        <ul className="py-1 max-h-60 overflow-auto">
+          {suggestions.map((suggestion, index) => (
+            <li key={suggestion.id}>
+              <button
+                type="button"
+                className={cn(
+                  'w-full px-3 py-2 text-left flex items-start gap-2 hover:bg-accent transition-colors',
+                  highlightedIndex === index && 'bg-accent'
+                )}
+                onClick={() => handleSelectSuggestion(suggestion)}
+                onMouseEnter={() => setHighlightedIndex(index)}
+              >
+                <MapPin className="h-4 w-4 mt-0.5 flex-shrink-0 text-muted-foreground" />
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium truncate">
+                    {suggestion.text}
+                  </p>
+                  {suggestion.text !== suggestion.address && (
+                    <p className="text-xs text-muted-foreground truncate">
+                      {suggestion.address}
+                    </p>
+                  )}
+                </div>
+              </button>
+            </li>
+          ))}
+        </ul>
+      </div>,
+      document.body
+    );
+  };
 
   return (
     <div ref={containerRef} className={cn('relative', className)}>
@@ -177,38 +241,8 @@ export function AddressAutocomplete({
         </div>
       )}
 
-      {/* Suggestions dropdown */}
-      {isOpen && suggestions.length > 0 && (
-        <div className="absolute top-full left-0 right-0 z-50 mt-1 rounded-md border bg-popover shadow-md overflow-hidden">
-          <ul className="py-1 max-h-60 overflow-auto">
-            {suggestions.map((suggestion, index) => (
-              <li key={suggestion.id}>
-                <button
-                  type="button"
-                  className={cn(
-                    'w-full px-3 py-2 text-left flex items-start gap-2 hover:bg-accent transition-colors',
-                    highlightedIndex === index && 'bg-accent'
-                  )}
-                  onClick={() => handleSelectSuggestion(suggestion)}
-                  onMouseEnter={() => setHighlightedIndex(index)}
-                >
-                  <MapPin className="h-4 w-4 mt-0.5 flex-shrink-0 text-muted-foreground" />
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium truncate">
-                      {suggestion.text}
-                    </p>
-                    {suggestion.text !== suggestion.address && (
-                      <p className="text-xs text-muted-foreground truncate">
-                        {suggestion.address}
-                      </p>
-                    )}
-                  </div>
-                </button>
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
+      {/* Suggestions dropdown - rendered via portal */}
+      {renderDropdown()}
     </div>
   );
 }
