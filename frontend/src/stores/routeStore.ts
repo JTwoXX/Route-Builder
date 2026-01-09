@@ -75,12 +75,16 @@ export const useRouteStore = create<RouteState>()(
                     serviceTime: stopData.serviceTime ?? settings.defaultServiceTime,
                 };
                 set({ stops: [...stops, newStop], routeGeometry: null, optimizedDistance: null, optimizedDuration: null });
+                // Auto-calculate route geometry to show road-following path
+                get().recalculateRoute();
             },
 
             removeStop: (id) => {
                 const stops = get().stops.filter(s => s.id !== id);
                 const resequenced = stops.map((s, i) => ({ ...s, sequence: i + 1 }));
                 set({ stops: resequenced, routeGeometry: null, optimizedDistance: null, optimizedDuration: null });
+                // Auto-calculate route geometry to show road-following path
+                get().recalculateRoute();
             },
 
             updateStop: (id, updates) => {
@@ -93,6 +97,8 @@ export const useRouteStore = create<RouteState>()(
             reorderStops: (stops) => {
                 const resequenced = stops.map((s, i) => ({ ...s, sequence: i + 1 }));
                 set({ stops: resequenced, routeGeometry: null, optimizedDistance: null, optimizedDuration: null });
+                // Auto-calculate route geometry to show road-following path
+                get().recalculateRoute();
             },
 
             clearStops: () => {
@@ -105,6 +111,10 @@ export const useRouteStore = create<RouteState>()(
 
             setStartLocation: (location) => {
                 set({ startLocation: location, routeGeometry: null, optimizedDistance: null, optimizedDuration: null });
+                // Auto-calculate route geometry to show road-following path
+                if (location) {
+                    get().recalculateRoute();
+                }
             },
 
             setOptimizationSettings: (settings) => {
