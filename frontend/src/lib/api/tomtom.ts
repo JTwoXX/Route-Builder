@@ -346,6 +346,7 @@ export async function calculateOptimizedRoute(
       travelMode: 'car',
       traffic: 'true',
       routeType: 'fastest',
+      routeRepresentation: 'polyline', // Required to get detailed road geometry
     });
 
     // Add waypoint optimization if more than 1 waypoint
@@ -441,6 +442,7 @@ export async function calculateRoute(
       travelMode: 'car',
       traffic: 'true',
       routeType: 'fastest',
+      routeRepresentation: 'polyline', // Required to get detailed road geometry
     });
 
     const avoid: string[] = [];
