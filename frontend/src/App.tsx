@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useMemo } from 'react';
+import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import { Map, MapControls, MapMarker, MarkerContent, MapRoute, useMap } from "@/components/ui/map";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { RoutePanel } from "@/features/routes/RoutePanel";
@@ -8,6 +8,7 @@ import { reverseGeocode } from "@/lib/api/tomtom";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Home } from 'lucide-react';
 import './App.css';
+import type { StartLocation, Stop } from "@/lib/types";
 
 function StopMarker({ sequence, isSelected, priority }: { sequence: number; isSelected?: boolean; priority?: string }) {
   const priorityColors = {
@@ -57,6 +58,79 @@ function MapClickHandler({ enabled, onMapClick }: { enabled: boolean; onMapClick
   return null;
 }
 
+// Component to handle map positioning based on start location and route optimization
+function MapController({
+  startLocation,
+  stops,
+  shouldFitBounds
+}: {
+  startLocation: StartLocation | null;
+  stops: Stop[];
+  shouldFitBounds: boolean;
+}) {
+  const { map, isLoaded } = useMap();
+  const prevStartLocationRef = useRef<StartLocation | null>(null);
+  const prevShouldFitBoundsRef = useRef(false);
+
+  // Fly to start location when it's first set
+  useEffect(() => {
+    if (!map || !isLoaded) return;
+
+    // Check if start location was just set (changed from null to a value)
+    const wasNull = prevStartLocationRef.current === null;
+    const isNowSet = startLocation !== null;
+
+    if (wasNull && isNowSet) {
+      map.flyTo({
+        center: [startLocation.longitude, startLocation.latitude],
+        zoom: 14,
+        duration: 1500,
+      });
+    }
+
+    prevStartLocationRef.current = startLocation;
+  }, [map, isLoaded, startLocation]);
+
+  // Fit bounds when route is optimized
+  useEffect(() => {
+    if (!map || !isLoaded) return;
+
+    // Only fit bounds when shouldFitBounds transitions from false to true
+    if (shouldFitBounds && !prevShouldFitBoundsRef.current) {
+      const allPoints: { longitude: number; latitude: number }[] = [];
+
+      if (startLocation) {
+        allPoints.push({ longitude: startLocation.longitude, latitude: startLocation.latitude });
+      }
+
+      stops.forEach(stop => {
+        allPoints.push({ longitude: stop.longitude, latitude: stop.latitude });
+      });
+
+      if (allPoints.length >= 2) {
+        // Calculate bounds
+        const lngs = allPoints.map(p => p.longitude);
+        const lats = allPoints.map(p => p.latitude);
+
+        const bounds: [[number, number], [number, number]] = [
+          [Math.min(...lngs), Math.min(...lats)], // SW
+          [Math.max(...lngs), Math.max(...lats)], // NE
+        ];
+
+        map.fitBounds(bounds, {
+          padding: { top: 80, bottom: 80, left: 80, right: 80 },
+          duration: 1000,
+          maxZoom: 15,
+        });
+      }
+    }
+
+    prevShouldFitBoundsRef.current = shouldFitBounds;
+  }, [map, isLoaded, shouldFitBounds, startLocation, stops]);
+
+  return null;
+}
+
 function StartMarker() {
   return (
     <div className="flex items-center justify-center w-10 h-10 rounded-full bg-green-600 font-bold text-sm shadow-lg border-2 border-white text-white">
@@ -67,6 +141,7 @@ function StartMarker() {
 
 function App() {
   const [addingByClick, setAddingByClick] = useState(false);
+  const [shouldFitBounds, setShouldFitBounds] = useState(false);
   const stops = useRouteStore((s) => s.stops);
   const startLocation = useRouteStore((s) => s.startLocation);
   const routeGeometry = useRouteStore((s) => s.routeGeometry);
@@ -74,6 +149,14 @@ function App() {
   const selectStop = useRouteStore((s) => s.selectStop);
   const addStop = useRouteStore((s) => s.addStop);
   const settings = useRouteStore((s) => s.optimizationSettings);
+
+  // Reset shouldFitBounds after it triggers
+  useEffect(() => {
+    if (shouldFitBounds) {
+      const timer = setTimeout(() => setShouldFitBounds(false), 100);
+      return () => clearTimeout(timer);
+    }
+  }, [shouldFitBounds]);
 
   const handleMapClick = useCallback(async (lat: number, lng: number) => {
     // Try to reverse geocode the clicked location
@@ -129,6 +212,7 @@ function App() {
         sidebar={
           <RoutePanel
             onAddByMapClick={() => setAddingByClick(!addingByClick)}
+            onRouteOptimized={() => setShouldFitBounds(true)}
           />
         }
       >
@@ -147,6 +231,11 @@ function App() {
           >
             <MapControls position="bottom-right" showZoom showLocate showFullscreen />
             <MapClickHandler enabled={addingByClick} onMapClick={handleMapClick} />
+            <MapController
+              startLocation={startLocation}
+              stops={stops}
+              shouldFitBounds={shouldFitBounds}
+            />
 
             {/* Traffic Layer with Controls */}
             <Traffic controlsPosition="top-left" />

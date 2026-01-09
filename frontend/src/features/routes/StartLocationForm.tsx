@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Home, X, Loader2 } from 'lucide-react';
+import { Home, X, Loader2, RotateCcw, ArrowRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { AddressAutocomplete } from '@/components/AddressAutocomplete';
 import { useRouteStore } from '@/stores/routeStore';
@@ -10,6 +10,8 @@ export function StartLocationForm() {
     const [isGeocoding, setIsGeocoding] = useState(false);
     const startLocation = useRouteStore((s) => s.startLocation);
     const setStartLocation = useRouteStore((s) => s.setStartLocation);
+    const roundTrip = useRouteStore((s) => s.optimizationSettings.roundTrip);
+    const setOptimizationSettings = useRouteStore((s) => s.setOptimizationSettings);
 
     // Handle selection from autocomplete
     const handleSelectSuggestion = (suggestion: SearchSuggestion) => {
@@ -49,7 +51,7 @@ export function StartLocationForm() {
     };
 
     return (
-        <div className="space-y-2">
+        <div className="space-y-3">
             <h3 className="font-medium text-sm flex items-center gap-2">
                 <Home className="h-4 w-4" />
                 Start Location
@@ -98,11 +100,42 @@ export function StartLocationForm() {
                 </form>
             )}
 
-            {!startLocation && (
-                <p className="text-xs text-muted-foreground">
-                    Set the starting point for route optimization
-                </p>
-            )}
+            {/* Round Trip / One Way Toggle */}
+            <div className="flex gap-1 p-1 bg-muted rounded-lg">
+                <button
+                    type="button"
+                    onClick={() => setOptimizationSettings({ roundTrip: true })}
+                    className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
+                        roundTrip
+                            ? 'bg-background text-foreground shadow-sm'
+                            : 'text-muted-foreground hover:text-foreground'
+                    }`}
+                >
+                    <RotateCcw className="h-3 w-3" />
+                    Round Trip
+                </button>
+                <button
+                    type="button"
+                    onClick={() => setOptimizationSettings({ roundTrip: false })}
+                    className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
+                        !roundTrip
+                            ? 'bg-background text-foreground shadow-sm'
+                            : 'text-muted-foreground hover:text-foreground'
+                    }`}
+                >
+                    <ArrowRight className="h-3 w-3" />
+                    One Way
+                </button>
+            </div>
+
+            <p className="text-xs text-muted-foreground">
+                {!startLocation
+                    ? 'Set the starting point for route optimization'
+                    : roundTrip
+                        ? 'Route will return to start location'
+                        : 'Route ends at the last stop'
+                }
+            </p>
         </div>
     );
 }

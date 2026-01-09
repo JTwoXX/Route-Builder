@@ -56,7 +56,7 @@ export const useRouteStore = create<RouteState>()(
             routes: [],
             optimizationSettings: {
                 optimizationType: 'shortest_time',
-                roundTrip: false,
+                roundTrip: true, // Default to round trip (return to start)
                 lockLastDestination: false,
                 avoidHighways: false,
                 avoidTolls: false,
@@ -136,6 +136,7 @@ export const useRouteStore = create<RouteState>()(
                             avoidHighways: optimizationSettings.avoidHighways,
                             avoidTolls: optimizationSettings.avoidTolls,
                             computeBestOrder: true,
+                            roundTrip: optimizationSettings.roundTrip,
                         }
                     );
 

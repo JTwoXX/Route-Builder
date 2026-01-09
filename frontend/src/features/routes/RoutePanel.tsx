@@ -13,23 +13,34 @@ import { SaveRouteDialog } from './SaveRouteDialog';
 
 interface RoutePanelProps {
     onAddByMapClick?: () => void;
+    onRouteOptimized?: () => void;
 }
 
-function RouteStatsDisplay({ stops, optimizedDistance, optimizedDuration }: {
+function RouteStatsDisplay({ stops, startLocation, optimizedDistance, optimizedDuration }: {
     stops: { latitude: number; longitude: number; serviceTime?: number }[];
+    startLocation?: { latitude: number; longitude: number } | null;
     optimizedDistance?: number; // miles from TomTom API
     optimizedDuration?: number; // minutes from TomTom API
 }) {
+    // Calculate total points (start location + stops)
+    const hasRoute = startLocation && stops.length >= 1;
+
     // Use optimized values from TomTom if available, otherwise estimate
     let totalDistanceMiles = optimizedDistance;
     let travelDuration = optimizedDuration;
 
-    if (totalDistanceMiles === undefined) {
+    if (totalDistanceMiles === undefined && hasRoute) {
+        // Build all points including start location
+        const allPoints = [
+            { longitude: startLocation.longitude, latitude: startLocation.latitude },
+            ...stops
+        ];
+
         // Estimate using straight-line distance (converted to miles)
         let totalDistanceKm = 0;
-        for (let i = 1; i < stops.length; i++) {
-            const dx = stops[i].longitude - stops[i - 1].longitude;
-            const dy = stops[i].latitude - stops[i - 1].latitude;
+        for (let i = 1; i < allPoints.length; i++) {
+            const dx = allPoints[i].longitude - allPoints[i - 1].longitude;
+            const dy = allPoints[i].latitude - allPoints[i - 1].latitude;
             totalDistanceKm += Math.sqrt(dx * dx + dy * dy) * 111;
         }
         totalDistanceMiles = totalDistanceKm * 0.621371; // Convert km to miles
@@ -40,13 +51,14 @@ function RouteStatsDisplay({ stops, optimizedDistance, optimizedDuration }: {
     const totalServiceTime = stops.reduce((sum, s) => sum + (s.serviceTime || 0), 0);
     const totalDuration = (travelDuration || 0) + totalServiceTime;
 
-    if (stops.length < 2) return null;
+    // Show stats when we have a start location and at least 1 stop
+    if (!hasRoute) return null;
 
     return (
         <div className="grid grid-cols-2 gap-2 p-3 bg-muted/50 rounded-lg text-sm">
             <div>
                 <span className="text-muted-foreground">Distance:</span>
-                <span className="ml-1 font-medium">{totalDistanceMiles.toFixed(1)} mi</span>
+                <span className="ml-1 font-medium">{(totalDistanceMiles ?? 0).toFixed(1)} mi</span>
             </div>
             <div>
                 <span className="text-muted-foreground">Travel Time:</span>
@@ -130,7 +142,7 @@ function RouteSelector() {
     );
 }
 
-export function RoutePanel({ onAddByMapClick }: RoutePanelProps) {
+export function RoutePanel({ onAddByMapClick, onRouteOptimized }: RoutePanelProps) {
     const [saveDialogOpen, setSaveDialogOpen] = useState(false);
 
     const stops = useRouteStore((s) => s.stops);
@@ -144,7 +156,12 @@ export function RoutePanel({ onAddByMapClick }: RoutePanelProps) {
     const removeStop = useRouteStore((s) => s.removeStop);
     const updateStop = useRouteStore((s) => s.updateStop);
     const clearStops = useRouteStore((s) => s.clearStops);
-    const optimizeRoute = useRouteStore((s) => s.optimizeRoute);
+    const optimizeRouteStore = useRouteStore((s) => s.optimizeRoute);
+
+    const handleOptimizeRoute = async () => {
+        await optimizeRouteStore();
+        onRouteOptimized?.();
+    };
 
     return (
         <>
@@ -232,13 +249,14 @@ export function RoutePanel({ onAddByMapClick }: RoutePanelProps) {
                             <div className="p-4 border-t space-y-3">
                                 <RouteStatsDisplay
                                     stops={stops}
+                                    startLocation={startLocation}
                                     optimizedDistance={optimizedDistance ?? undefined}
                                     optimizedDuration={optimizedDuration ?? undefined}
                                 />
 
                                 <Button
                                     className="w-full"
-                                    onClick={optimizeRoute}
+                                    onClick={handleOptimizeRoute}
                                     disabled={isOptimizing || !startLocation}
                                 >
                                     <Sparkles className="h-4 w-4 mr-2" />

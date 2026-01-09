@@ -313,6 +313,7 @@ export async function calculateOptimizedRoute(
     avoidHighways?: boolean;
     avoidTolls?: boolean;
     computeBestOrder?: boolean;
+    roundTrip?: boolean;
   } = {}
 ): Promise<OptimizedRouteResult | null> {
   if (!TOMTOM_API_KEY) {
@@ -324,14 +325,21 @@ export async function calculateOptimizedRoute(
     return null;
   }
 
-  const { avoidHighways = false, avoidTolls = false, computeBestOrder = true } = options;
+  const { avoidHighways = false, avoidTolls = false, computeBestOrder = true, roundTrip = true } = options;
 
   try {
-    // Build locations string: start:waypoint1:waypoint2:...
-    const locations = [
+    // Build locations string: start:waypoint1:waypoint2:...:start (if round trip)
+    const locationPoints = [
       `${startLocation.latitude},${startLocation.longitude}`,
       ...waypoints.map(wp => `${wp.latitude},${wp.longitude}`)
-    ].join(':');
+    ];
+
+    // Add start location at end for round trip
+    if (roundTrip) {
+      locationPoints.push(`${startLocation.latitude},${startLocation.longitude}`);
+    }
+
+    const locations = locationPoints.join(':');
 
     const params = new URLSearchParams({
       key: TOMTOM_API_KEY,
