@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { Plus, MapPin, ClipboardPaste, ChevronUp, Loader2 } from 'lucide-react';
+import { useState, useRef } from 'react';
+import { Plus, MapPin, ClipboardPaste, ChevronUp, Loader2, FileText } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { AddressAutocomplete } from '@/components/AddressAutocomplete';
 import { useRouteStore } from '@/stores/routeStore';
@@ -15,8 +15,77 @@ export function AddStopForm({ onAddByClick, defaultServiceTime = 5 }: AddStopFor
     const [batchMode, setBatchMode] = useState(false);
     const [batchAddresses, setBatchAddresses] = useState('');
     const [isGeocoding, setIsGeocoding] = useState(false);
+    const [isImportingCSV, setIsImportingCSV] = useState(false);
+    const fileInputRef = useRef<HTMLInputElement>(null);
     const addStop = useRouteStore((s) => s.addStop);
     const stops = useRouteStore((s) => s.stops);
+
+    // CSV parsing helper
+    const parseCSV = (text: string) => {
+        const lines = text.trim().split('\n');
+        if (lines.length < 2) return [];
+
+        const headers = lines[0].toLowerCase().split(',').map(h => h.trim());
+        const stops: Array<{
+            address: string;
+            name?: string;
+            latitude?: number;
+            longitude?: number;
+        }> = [];
+
+        for (let i = 1; i < lines.length; i++) {
+            const values = lines[i].split(',').map(v => v.trim());
+            const stop: { address: string; name?: string; latitude?: number; longitude?: number } = { address: '' };
+
+            headers.forEach((header, idx) => {
+                const value = values[idx];
+                if (header.includes('address')) stop.address = value;
+                else if (header.includes('name')) stop.name = value;
+                else if (header.includes('lat')) stop.latitude = parseFloat(value);
+                else if (header.includes('lng') || header.includes('lon')) stop.longitude = parseFloat(value);
+            });
+
+            if (stop.address) stops.push(stop);
+        }
+
+        return stops;
+    };
+
+    // Handle CSV file upload
+    const handleCSVUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+
+        setIsImportingCSV(true);
+        try {
+            const text = await file.text();
+            const csvStops = parseCSV(text);
+            let success = 0;
+
+            for (const stop of csvStops) {
+                const lat = stop.latitude || (40.7128 + (Math.random() - 0.5) * 0.1);
+                const lng = stop.longitude || (-74.006 + (Math.random() - 0.5) * 0.1);
+
+                addStop({
+                    address: stop.address,
+                    name: stop.name,
+                    latitude: lat,
+                    longitude: lng,
+                    serviceTime: defaultServiceTime,
+                });
+                success++;
+            }
+
+            if (success > 0) {
+                alert(`Successfully imported ${success} stops from CSV`);
+            }
+        } catch {
+            alert('Failed to parse CSV file');
+        } finally {
+            setIsImportingCSV(false);
+            if (fileInputRef.current) fileInputRef.current.value = '';
+        }
+    };
 
     // Get center coordinates to bias autocomplete results
     // Only bias when there are existing stops, otherwise search all of US
@@ -129,20 +198,43 @@ export function AddStopForm({ onAddByClick, defaultServiceTime = 5 }: AddStopFor
                     <div className="flex gap-2">
                         <Button
                             variant="outline"
-                            className="flex-1 justify-start text-muted-foreground"
+                            size="sm"
+                            className="flex-1 justify-center text-muted-foreground"
                             onClick={onAddByClick}
                         >
-                            <MapPin className="h-4 w-4 mr-2" />
-                            Click map
+                            <MapPin className="h-3.5 w-3.5 mr-1" />
+                            Map
                         </Button>
                         <Button
                             variant="outline"
-                            className="flex-1 justify-start text-muted-foreground"
+                            size="sm"
+                            className="flex-1 justify-center text-muted-foreground"
                             onClick={() => setBatchMode(true)}
                         >
-                            <ClipboardPaste className="h-4 w-4 mr-2" />
-                            Batch paste
+                            <ClipboardPaste className="h-3.5 w-3.5 mr-1" />
+                            Paste
                         </Button>
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            className="flex-1 justify-center text-muted-foreground relative"
+                            disabled={isImportingCSV}
+                            onClick={() => fileInputRef.current?.click()}
+                        >
+                            {isImportingCSV ? (
+                                <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />
+                            ) : (
+                                <FileText className="h-3.5 w-3.5 mr-1" />
+                            )}
+                            CSV
+                        </Button>
+                        <input
+                            ref={fileInputRef}
+                            type="file"
+                            accept=".csv"
+                            onChange={handleCSVUpload}
+                            className="hidden"
+                        />
                     </div>
                 </>
             ) : (

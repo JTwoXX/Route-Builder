@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Route, Sparkles, Trash2, Save, Download, Settings, MapPin, Truck, FolderOpen, ChevronDown, Plus, Home, Upload } from 'lucide-react';
+import { Route, Sparkles, Trash2, Save, Download, Settings, MapPin, Truck, FolderOpen, ChevronDown, Plus, Home } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -9,7 +9,6 @@ import { StopCard } from './StopCard';
 import { AddStopForm } from './AddStopForm';
 import { StartLocationForm } from './StartLocationForm';
 import { OptimizationPanel } from './OptimizationPanel';
-import { CSVImport } from './CSVImport';
 import { SaveRouteDialog } from './SaveRouteDialog';
 
 interface RoutePanelProps {
@@ -201,15 +200,6 @@ export function RoutePanel({ onAddByMapClick, onRouteOptimized }: RoutePanelProp
                                     <AddStopForm onAddByClick={onAddByMapClick} />
                                 </CollapsibleSection>
 
-                                {/* Collapsible: Import Stops */}
-                                <CollapsibleSection
-                                    title="Import Stops"
-                                    icon={<Upload className="h-3.5 w-3.5" />}
-                                    defaultExpanded={false}
-                                >
-                                    <CSVImport />
-                                </CollapsibleSection>
-
                                 {/* Stops List */}
                                 <div className="border-b">
                                     <div className="px-3 py-2 flex items-center justify-between bg-muted/30">
@@ -292,11 +282,11 @@ export function RoutePanel({ onAddByMapClick, onRouteOptimized }: RoutePanelProp
                         </div>
                     </TabsContent>
 
-                    <TabsContent value="settings" className="flex-1 overflow-auto m-0">
+                    <TabsContent value="settings" className="flex-1 overflow-auto m-0 flex flex-col justify-start">
                         <OptimizationPanel />
                     </TabsContent>
 
-                    <TabsContent value="vehicles" className="flex-1 overflow-auto m-0 p-3">
+                    <TabsContent value="vehicles" className="flex-1 overflow-auto m-0 p-3 flex flex-col justify-start">
                         <VehiclesList />
                     </TabsContent>
                 </Tabs>
