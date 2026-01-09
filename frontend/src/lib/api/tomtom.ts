@@ -372,7 +372,9 @@ export async function calculateOptimizedRoute(
       throw new Error(`TomTom routing error: ${response.status}`);
     }
 
-    const data: TomTomRouteResponse = await response.json();
+    const data = await response.json();
+
+    console.log('TomTom API full response:', JSON.stringify(data, null, 2));
 
     if (!data.routes || data.routes.length === 0) {
       console.error('No routes returned from TomTom');
@@ -380,14 +382,25 @@ export async function calculateOptimizedRoute(
     }
 
     const route = data.routes[0];
+    console.log('Route summary:', route.summary);
+    console.log('Number of legs:', route.legs?.length);
 
     // Extract route geometry from all legs
     const routeGeometry: [number, number][] = [];
-    for (const leg of route.legs) {
-      for (const point of leg.points) {
-        routeGeometry.push([point.longitude, point.latitude]);
+
+    if (route.legs) {
+      for (let i = 0; i < route.legs.length; i++) {
+        const leg = route.legs[i];
+        console.log(`Leg ${i} points count:`, leg.points?.length || 0);
+        if (leg.points) {
+          for (const point of leg.points) {
+            routeGeometry.push([point.longitude, point.latitude]);
+          }
+        }
       }
     }
+
+    console.log('Total route geometry points:', routeGeometry.length);
 
     // Calculate optimized order based on leg ordering
     // TomTom returns legs in optimized order when computeBestOrder is true
