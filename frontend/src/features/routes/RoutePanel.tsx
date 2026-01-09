@@ -1,8 +1,9 @@
 import { useState } from 'react';
-import { Route, Sparkles, Trash2, Save, Download, Settings, MapPin, Truck, FolderOpen, ChevronDown, Plus } from 'lucide-react';
+import { Route, Sparkles, Trash2, Save, Download, Settings, MapPin, Truck, FolderOpen, ChevronDown, Plus, Home, Upload } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { CollapsibleSection } from '@/components/ui/collapsible-section';
 import { useRouteStore } from '@/stores/routeStore';
 import { StopCard } from './StopCard';
 import { AddStopForm } from './AddStopForm';
@@ -19,53 +20,47 @@ interface RoutePanelProps {
 function RouteStatsDisplay({ stops, startLocation, optimizedDistance, optimizedDuration }: {
     stops: { latitude: number; longitude: number; serviceTime?: number }[];
     startLocation?: { latitude: number; longitude: number } | null;
-    optimizedDistance?: number; // miles from TomTom API
-    optimizedDuration?: number; // minutes from TomTom API
+    optimizedDistance?: number;
+    optimizedDuration?: number;
 }) {
-    // Calculate total points (start location + stops)
     const hasRoute = startLocation && stops.length >= 1;
 
-    // Use optimized values from TomTom if available, otherwise estimate
     let totalDistanceMiles = optimizedDistance;
     let travelDuration = optimizedDuration;
 
     if (totalDistanceMiles === undefined && hasRoute) {
-        // Build all points including start location
         const allPoints = [
             { longitude: startLocation.longitude, latitude: startLocation.latitude },
             ...stops
         ];
 
-        // Estimate using straight-line distance (converted to miles)
         let totalDistanceKm = 0;
         for (let i = 1; i < allPoints.length; i++) {
             const dx = allPoints[i].longitude - allPoints[i - 1].longitude;
             const dy = allPoints[i].latitude - allPoints[i - 1].latitude;
             totalDistanceKm += Math.sqrt(dx * dx + dy * dy) * 111;
         }
-        totalDistanceMiles = totalDistanceKm * 0.621371; // Convert km to miles
-        travelDuration = Math.round(totalDistanceKm * 2); // Rough estimate
+        totalDistanceMiles = totalDistanceKm * 0.621371;
+        travelDuration = Math.round(totalDistanceKm * 2);
     }
 
-    // Use actual user-entered service times from each stop
     const totalServiceTime = stops.reduce((sum, s) => sum + (s.serviceTime || 0), 0);
     const totalDuration = (travelDuration || 0) + totalServiceTime;
 
-    // Show stats when we have a start location and at least 1 stop
     if (!hasRoute) return null;
 
     return (
-        <div className="grid grid-cols-2 gap-2 p-3 bg-muted/50 rounded-lg text-sm">
+        <div className="grid grid-cols-2 gap-2 p-2 bg-muted/50 rounded-lg text-sm">
             <div>
                 <span className="text-muted-foreground">Distance:</span>
                 <span className="ml-1 font-medium">{(totalDistanceMiles ?? 0).toFixed(1)} mi</span>
             </div>
             <div>
-                <span className="text-muted-foreground">Travel Time:</span>
+                <span className="text-muted-foreground">Travel:</span>
                 <span className="ml-1 font-medium">{travelDuration || 0} min</span>
             </div>
             <div>
-                <span className="text-muted-foreground">Total Duration:</span>
+                <span className="text-muted-foreground">Total:</span>
                 <span className="ml-1 font-medium">{totalDuration} min</span>
             </div>
             <div>
@@ -86,7 +81,6 @@ function RouteSelector() {
 
     return (
         <div className="border-b">
-            {/* Current Route Display - Always visible */}
             <div
                 className="p-3 flex items-center justify-between cursor-pointer hover:bg-accent/50 transition-colors"
                 onClick={() => setShowList(!showList)}
@@ -105,7 +99,6 @@ function RouteSelector() {
                 <ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform ${showList ? 'rotate-180' : ''}`} />
             </div>
 
-            {/* Expandable Saved Routes List */}
             {showList && (
                 <div className="border-t bg-muted/30">
                     <div className="p-2 max-h-48 overflow-auto">
@@ -166,12 +159,11 @@ export function RoutePanel({ onAddByMapClick, onRouteOptimized }: RoutePanelProp
     return (
         <>
             <div className="flex h-full flex-col">
-                {/* Route Selector - Always at top, separate from tabs */}
                 <RouteSelector />
 
-                {/* Tabs for Stops, Settings, Fleet */}
                 <Tabs defaultValue="stops" className="flex flex-1 flex-col overflow-hidden">
-                    <TabsList className="grid w-full grid-cols-3 m-2 mr-4">
+                    <div className="px-3 py-2">
+                        <TabsList className="grid w-full grid-cols-3">
                         <TabsTrigger value="stops" className="text-xs">
                             <MapPin className="h-3 w-3 mr-1" />
                             Stops
@@ -184,85 +176,103 @@ export function RoutePanel({ onAddByMapClick, onRouteOptimized }: RoutePanelProp
                             <Truck className="h-3 w-3 mr-1" />
                             Fleet
                         </TabsTrigger>
-                    </TabsList>
+                        </TabsList>
+                    </div>
 
                     <TabsContent value="stops" className="flex-1 overflow-hidden flex flex-col m-0">
-                        {/* Start Location Section */}
-                        <div className="p-4 border-b bg-muted/30">
-                            <StartLocationForm />
-                        </div>
-
-                        {/* Add Stop Section */}
-                        <div className="p-4 border-b">
-                            <h3 className="font-medium mb-3 flex items-center gap-2">
-                                <Route className="h-4 w-4" />
-                                Add Stops
-                            </h3>
-                            <AddStopForm onAddByClick={onAddByMapClick} />
-                        </div>
-
-                        {/* Stops List */}
+                        {/* Scrollable content area */}
                         <div className="flex-1 overflow-hidden flex flex-col">
-                            <div className="px-4 py-3 flex items-center justify-between">
-                                <span className="text-sm text-muted-foreground">
-                                    {stops.length} stop{stops.length !== 1 ? 's' : ''}
-                                </span>
-                                {stops.length > 0 && (
-                                    <Button
-                                        variant="ghost"
-                                        size="sm"
-                                        className="text-destructive hover:text-destructive h-8"
-                                        onClick={clearStops}
-                                    >
-                                        <Trash2 className="h-3 w-3 mr-1" />
-                                        Clear All
-                                    </Button>
-                                )}
-                            </div>
+                            <ScrollArea className="flex-1">
+                                {/* Collapsible: Start Location */}
+                                <CollapsibleSection
+                                    title="Start Location"
+                                    icon={<Home className="h-3.5 w-3.5" />}
+                                    defaultExpanded={true}
+                                >
+                                    <StartLocationForm />
+                                </CollapsibleSection>
 
-                            <ScrollArea className="flex-1 px-4">
-                                <div className="space-y-2 pb-4">
-                                    {stops.length === 0 ? (
-                                        <div className="text-center py-8 text-muted-foreground">
-                                            <Route className="h-12 w-12 mx-auto mb-3 opacity-20" />
-                                            <p className="text-sm">No stops added yet</p>
-                                            <p className="text-xs mt-1">Add addresses or click on the map</p>
-                                        </div>
-                                    ) : (
-                                        stops.map((stop) => (
-                                            <StopCard
-                                                key={stop.id}
-                                                stop={stop}
-                                                isSelected={selectedStopId === stop.id}
-                                                onSelect={() => selectStop(stop.id)}
-                                                onRemove={() => removeStop(stop.id)}
-                                                onUpdateServiceTime={(minutes) => updateStop(stop.id, { serviceTime: minutes })}
-                                            />
-                                        ))
-                                    )}
+                                {/* Collapsible: Add Stops */}
+                                <CollapsibleSection
+                                    title="Add Stops"
+                                    icon={<Route className="h-3.5 w-3.5" />}
+                                    defaultExpanded={false}
+                                >
+                                    <AddStopForm onAddByClick={onAddByMapClick} />
+                                </CollapsibleSection>
+
+                                {/* Collapsible: Import Stops */}
+                                <CollapsibleSection
+                                    title="Import Stops"
+                                    icon={<Upload className="h-3.5 w-3.5" />}
+                                    defaultExpanded={false}
+                                >
+                                    <CSVImport />
+                                </CollapsibleSection>
+
+                                {/* Stops List */}
+                                <div className="border-b">
+                                    <div className="px-3 py-2 flex items-center justify-between bg-muted/30">
+                                        <span className="text-sm font-medium">
+                                            {stops.length} stop{stops.length !== 1 ? 's' : ''}
+                                        </span>
+                                        {stops.length > 0 && (
+                                            <Button
+                                                variant="ghost"
+                                                size="sm"
+                                                className="text-destructive hover:text-destructive h-7 text-xs"
+                                                onClick={clearStops}
+                                            >
+                                                <Trash2 className="h-3 w-3 mr-1" />
+                                                Clear
+                                            </Button>
+                                        )}
+                                    </div>
+
+                                    <div className="p-3 space-y-2">
+                                        {stops.length === 0 ? (
+                                            <div className="text-center py-6 text-muted-foreground">
+                                                <Route className="h-10 w-10 mx-auto mb-2 opacity-20" />
+                                                <p className="text-sm">No stops added yet</p>
+                                                <p className="text-xs mt-1">Expand "Add Stops" above</p>
+                                            </div>
+                                        ) : (
+                                            stops.map((stop) => (
+                                                <StopCard
+                                                    key={stop.id}
+                                                    stop={stop}
+                                                    isSelected={selectedStopId === stop.id}
+                                                    onSelect={() => selectStop(stop.id)}
+                                                    onRemove={() => removeStop(stop.id)}
+                                                    onUpdateServiceTime={(minutes) => updateStop(stop.id, { serviceTime: minutes })}
+                                                />
+                                            ))
+                                        )}
+                                    </div>
                                 </div>
                             </ScrollArea>
                         </div>
 
-                        {/* Stats & Actions */}
-                        {stops.length >= 1 && (
-                            <div className="p-4 border-t space-y-3">
-                                <RouteStatsDisplay
-                                    stops={stops}
-                                    startLocation={startLocation}
-                                    optimizedDistance={optimizedDistance ?? undefined}
-                                    optimizedDuration={optimizedDuration ?? undefined}
-                                />
+                        {/* Pinned Stats & Actions - Always visible */}
+                        <div className="border-t bg-card p-3 space-y-2 flex-shrink-0">
+                            <RouteStatsDisplay
+                                stops={stops}
+                                startLocation={startLocation}
+                                optimizedDistance={optimizedDistance ?? undefined}
+                                optimizedDuration={optimizedDuration ?? undefined}
+                            />
 
-                                <Button
-                                    className="w-full"
-                                    onClick={handleOptimizeRoute}
-                                    disabled={isOptimizing || !startLocation}
-                                >
-                                    <Sparkles className="h-4 w-4 mr-2" />
-                                    {isOptimizing ? 'Optimizing...' : !startLocation ? 'Set Start Location First' : 'Optimize Route'}
-                                </Button>
+                            <Button
+                                className="w-full"
+                                size="sm"
+                                onClick={handleOptimizeRoute}
+                                disabled={isOptimizing || !startLocation || stops.length === 0}
+                            >
+                                <Sparkles className="h-4 w-4 mr-2" />
+                                {isOptimizing ? 'Optimizing...' : !startLocation ? 'Set Start Location' : stops.length === 0 ? 'Add Stops' : 'Optimize Route'}
+                            </Button>
 
+                            {stops.length > 0 && (
                                 <div className="flex gap-2">
                                     <Button
                                         variant="outline"
@@ -278,18 +288,15 @@ export function RoutePanel({ onAddByMapClick, onRouteOptimized }: RoutePanelProp
                                         Export
                                     </Button>
                                 </div>
-                            </div>
-                        )}
-
-                        {/* CSV Import */}
-                        <CSVImport />
+                            )}
+                        </div>
                     </TabsContent>
 
                     <TabsContent value="settings" className="flex-1 overflow-auto m-0">
                         <OptimizationPanel />
                     </TabsContent>
 
-                    <TabsContent value="vehicles" className="flex-1 overflow-auto m-0 p-4">
+                    <TabsContent value="vehicles" className="flex-1 overflow-auto m-0 p-3">
                         <VehiclesList />
                     </TabsContent>
                 </Tabs>
@@ -308,8 +315,8 @@ function VehiclesList() {
     ];
 
     return (
-        <div className="space-y-3">
-            <h3 className="font-medium flex items-center gap-2">
+        <div className="space-y-2">
+            <h3 className="font-medium text-sm flex items-center gap-2">
                 <Truck className="h-4 w-4" />
                 Fleet Vehicles
             </h3>
@@ -317,14 +324,14 @@ function VehiclesList() {
                 {vehicles.map((v) => (
                     <div
                         key={v.id}
-                        className="flex items-center gap-3 p-3 rounded-lg border bg-card"
+                        className="flex items-center gap-3 p-2 rounded-lg border bg-card"
                     >
                         <div
-                            className="w-3 h-3 rounded-full"
+                            className="w-3 h-3 rounded-full flex-shrink-0"
                             style={{ backgroundColor: v.color || '#3b82f6' }}
                         />
-                        <div className="flex-1">
-                            <p className="font-medium text-sm">{v.name}</p>
+                        <div className="flex-1 min-w-0">
+                            <p className="font-medium text-sm truncate">{v.name}</p>
                             <p className="text-xs text-muted-foreground">
                                 {v.type} • {v.capacityWeight ? `${v.capacityWeight}kg` : 'No capacity set'}
                             </p>

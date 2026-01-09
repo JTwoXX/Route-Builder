@@ -13,7 +13,6 @@ export function StartLocationForm() {
     const roundTrip = useRouteStore((s) => s.optimizationSettings.roundTrip);
     const setOptimizationSettings = useRouteStore((s) => s.setOptimizationSettings);
 
-    // Handle selection from autocomplete
     const handleSelectSuggestion = (suggestion: SearchSuggestion) => {
         setStartLocation({
             address: suggestion.address,
@@ -23,7 +22,6 @@ export function StartLocationForm() {
         setAddress('');
     };
 
-    // Handle manual form submission (geocode the address)
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!address.trim()) return;
@@ -51,37 +49,29 @@ export function StartLocationForm() {
     };
 
     return (
-        <div className="space-y-3">
-            <h3 className="font-medium text-sm flex items-center gap-2">
-                <Home className="h-4 w-4" />
-                Start Location
-            </h3>
-
+        <div className="space-y-1.5">
             {startLocation ? (
-                <div className="flex items-center gap-2 p-2 rounded-lg border bg-primary/5 border-primary/20">
-                    <Home className="h-4 w-4 text-primary flex-shrink-0" />
+                <div className="flex items-center gap-2 p-1.5 rounded border bg-primary/5 border-primary/20">
+                    <Home className="h-3.5 w-3.5 text-primary flex-shrink-0" />
                     <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium truncate">{startLocation.address}</p>
-                        <p className="text-xs text-muted-foreground">
-                            {startLocation.latitude.toFixed(5)}, {startLocation.longitude.toFixed(5)}
-                        </p>
+                        <p className="text-xs font-medium truncate">{startLocation.address}</p>
                     </div>
                     <Button
                         variant="ghost"
                         size="icon"
-                        className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                        className="h-5 w-5 text-muted-foreground hover:text-destructive"
                         onClick={handleClear}
                     >
-                        <X className="h-4 w-4" />
+                        <X className="h-3 w-3" />
                     </Button>
                 </div>
             ) : (
-                <form onSubmit={handleSubmit} className="flex gap-2">
+                <form onSubmit={handleSubmit} className="flex gap-1.5">
                     <AddressAutocomplete
                         value={address}
                         onChange={setAddress}
                         onSelect={handleSelectSuggestion}
-                        placeholder="Enter depot/start address..."
+                        placeholder="Enter start address..."
                         className="flex-1"
                         disabled={isGeocoding}
                     />
@@ -90,22 +80,23 @@ export function StartLocationForm() {
                         size="icon"
                         variant="outline"
                         disabled={!address.trim() || isGeocoding}
+                        className="h-8 w-8"
                     >
                         {isGeocoding ? (
-                            <Loader2 className="h-4 w-4 animate-spin" />
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
                         ) : (
-                            <Home className="h-4 w-4" />
+                            <Home className="h-3.5 w-3.5" />
                         )}
                     </Button>
                 </form>
             )}
 
             {/* Round Trip / One Way Toggle */}
-            <div className="flex gap-1 p-1 bg-muted rounded-lg">
+            <div className="flex gap-0.5 p-0.5 bg-muted rounded text-xs">
                 <button
                     type="button"
                     onClick={() => setOptimizationSettings({ roundTrip: true })}
-                    className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
+                    className={`flex-1 flex items-center justify-center gap-1 px-2 py-1 rounded transition-colors ${
                         roundTrip
                             ? 'bg-background text-foreground shadow-sm'
                             : 'text-muted-foreground hover:text-foreground'
@@ -117,7 +108,7 @@ export function StartLocationForm() {
                 <button
                     type="button"
                     onClick={() => setOptimizationSettings({ roundTrip: false })}
-                    className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
+                    className={`flex-1 flex items-center justify-center gap-1 px-2 py-1 rounded transition-colors ${
                         !roundTrip
                             ? 'bg-background text-foreground shadow-sm'
                             : 'text-muted-foreground hover:text-foreground'
@@ -127,15 +118,6 @@ export function StartLocationForm() {
                     One Way
                 </button>
             </div>
-
-            <p className="text-xs text-muted-foreground">
-                {!startLocation
-                    ? 'Set the starting point for route optimization'
-                    : roundTrip
-                        ? 'Route will return to start location'
-                        : 'Route ends at the last stop'
-                }
-            </p>
         </div>
     );
 }
