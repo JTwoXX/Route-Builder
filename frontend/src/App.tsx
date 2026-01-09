@@ -76,7 +76,7 @@ function App() {
     setAddingByClick(false);
   }, [addStop]);
 
-  // Calculate center from stops or default to NYC
+  // Calculate center from stops or default to Illinois (Springfield, IL)
   const center: [number, number] = useMemo(() => {
     if (stops.length > 0) {
       return [
@@ -84,7 +84,7 @@ function App() {
         stops.reduce((sum, s) => sum + s.latitude, 0) / stops.length,
       ];
     }
-    return [-74.006, 40.7128];
+    return [-89.6501, 39.7817]; // Springfield, Illinois
   }, [stops]);
 
   // Build route coordinates for polyline

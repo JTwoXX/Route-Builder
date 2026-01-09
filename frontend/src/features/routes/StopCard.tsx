@@ -1,6 +1,8 @@
-import { Trash2, GripVertical, Clock, Navigation } from 'lucide-react';
+import { useState } from 'react';
+import { Trash2, GripVertical, Clock, Navigation, Timer } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
 import type { Stop } from '@/lib/types';
 
@@ -9,9 +11,22 @@ interface StopCardProps {
     isSelected?: boolean;
     onSelect?: () => void;
     onRemove?: () => void;
+    onUpdateServiceTime?: (minutes: number) => void;
 }
 
-export function StopCard({ stop, isSelected, onSelect, onRemove }: StopCardProps) {
+export function StopCard({ stop, isSelected, onSelect, onRemove, onUpdateServiceTime }: StopCardProps) {
+    const [localServiceTime, setLocalServiceTime] = useState(stop.serviceTime?.toString() || '5');
+
+    const handleServiceTimeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const value = e.target.value;
+        setLocalServiceTime(value);
+
+        const minutes = parseInt(value, 10);
+        if (!isNaN(minutes) && minutes >= 0) {
+            onUpdateServiceTime?.(minutes);
+        }
+    };
+
     return (
         <div
             onClick={onSelect}
@@ -38,6 +53,21 @@ export function StopCard({ stop, isSelected, onSelect, onRemove }: StopCardProps
                 <p className="text-xs text-muted-foreground truncate">
                     {stop.address}
                 </p>
+
+                {/* Service Time - Editable */}
+                <div className="flex items-center gap-1 mt-1.5" onClick={(e) => e.stopPropagation()}>
+                    <Timer className="h-3 w-3 text-muted-foreground flex-shrink-0" />
+                    <Input
+                        type="number"
+                        min="0"
+                        max="999"
+                        value={localServiceTime}
+                        onChange={handleServiceTimeChange}
+                        className="h-6 w-14 px-1.5 text-xs"
+                        onClick={(e) => e.stopPropagation()}
+                    />
+                    <span className="text-xs text-muted-foreground">min</span>
+                </div>
 
                 {/* Time Window Badge */}
                 {stop.timeWindowStart && stop.timeWindowEnd && (

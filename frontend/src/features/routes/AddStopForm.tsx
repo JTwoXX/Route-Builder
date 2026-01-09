@@ -19,12 +19,13 @@ export function AddStopForm({ onAddByClick, defaultServiceTime = 5 }: AddStopFor
     const stops = useRouteStore((s) => s.stops);
 
     // Get center coordinates to bias autocomplete results
+    // Only bias when there are existing stops, otherwise search all of US
     const biasLocation = stops.length > 0
         ? {
             lat: stops.reduce((sum, s) => sum + s.latitude, 0) / stops.length,
             lon: stops.reduce((sum, s) => sum + s.longitude, 0) / stops.length,
         }
-        : { lat: 40.7128, lon: -74.006 }; // Default to NYC
+        : undefined; // No bias = search all US addresses
 
     // Handle selection from autocomplete
     const handleSelectSuggestion = (suggestion: SearchSuggestion) => {

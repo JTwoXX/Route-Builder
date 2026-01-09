@@ -23,7 +23,8 @@ function RouteStatsDisplay({ stops }: { stops: { latitude: number; longitude: nu
         totalDistance += Math.sqrt(dx * dx + dy * dy) * 111;
     }
 
-    const totalServiceTime = stops.reduce((sum, s) => sum + (s.serviceTime || 5), 0);
+    // Use actual user-entered service times from each stop
+    const totalServiceTime = stops.reduce((sum, s) => sum + (s.serviceTime || 0), 0);
 
     const stats: RouteStats = {
         totalDistance: Math.round(totalDistance * 10) / 10,
@@ -49,8 +50,8 @@ function RouteStatsDisplay({ stops }: { stops: { latitude: number; longitude: nu
                 <span className="ml-1 font-medium">{stats.totalStops}</span>
             </div>
             <div>
-                <span className="text-muted-foreground">Avg/Stop:</span>
-                <span className="ml-1 font-medium">{stats.avgStopDuration} min</span>
+                <span className="text-muted-foreground">Total Stop Time:</span>
+                <span className="ml-1 font-medium">{totalServiceTime} min</span>
             </div>
         </div>
     );
@@ -131,6 +132,7 @@ export function RoutePanel({ onAddByMapClick }: RoutePanelProps) {
     const isOptimizing = useRouteStore((s) => s.isOptimizing);
     const selectStop = useRouteStore((s) => s.selectStop);
     const removeStop = useRouteStore((s) => s.removeStop);
+    const updateStop = useRouteStore((s) => s.updateStop);
     const clearStops = useRouteStore((s) => s.clearStops);
     const optimizeRoute = useRouteStore((s) => s.optimizeRoute);
 
@@ -202,6 +204,7 @@ export function RoutePanel({ onAddByMapClick }: RoutePanelProps) {
                                                 isSelected={selectedStopId === stop.id}
                                                 onSelect={() => selectStop(stop.id)}
                                                 onRemove={() => removeStop(stop.id)}
+                                                onUpdateServiceTime={(minutes) => updateStop(stop.id, { serviceTime: minutes })}
                                             />
                                         ))
                                     )}

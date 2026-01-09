@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef, useCallback } from 'react';
 import { useMap } from '@/components/ui/map';
 import { getTrafficFlowTileUrl, getTrafficIncidentsTileUrl, isTomTomConfigured } from '@/lib/api/tomtom';
 import { Button } from '@/components/ui/button';
@@ -17,6 +17,7 @@ interface TrafficLayerProps {
 /**
  * TrafficLayer component adds TomTom traffic layers to the map
  * Must be used inside a Map component
+ * Handles theme changes by re-adding layers when map style changes
  */
 export function TrafficLayer({
   showFlow = true,
@@ -29,117 +30,137 @@ export function TrafficLayer({
   const INCIDENTS_SOURCE_ID = 'tomtom-traffic-incidents';
   const INCIDENTS_LAYER_ID = 'tomtom-traffic-incidents-layer';
 
-  // Add traffic flow layer
+  // Track current visibility settings in refs for use in styledata handler
+  const showFlowRef = useRef(showFlow);
+  const showIncidentsRef = useRef(showIncidents);
+  const opacityRef = useRef(opacity);
+
+  // Keep refs in sync with props
   useEffect(() => {
-    if (!isLoaded || !map || !isTomTomConfigured()) return;
+    showFlowRef.current = showFlow;
+    showIncidentsRef.current = showIncidents;
+    opacityRef.current = opacity;
+  }, [showFlow, showIncidents, opacity]);
+
+  // Function to add traffic layers
+  const addTrafficLayers = useCallback(() => {
+    if (!map || !isTomTomConfigured()) return;
 
     const flowTileUrl = getTrafficFlowTileUrl();
-    if (!flowTileUrl) return;
+    const incidentsTileUrl = getTrafficIncidentsTileUrl();
 
-    // Add traffic flow source
-    if (!map.getSource(FLOW_SOURCE_ID)) {
-      map.addSource(FLOW_SOURCE_ID, {
-        type: 'raster',
-        tiles: [flowTileUrl],
-        tileSize: 256,
-        attribution: '&copy; <a href="https://www.tomtom.com/">TomTom</a>',
-      });
-    }
-
-    // Add traffic flow layer
-    if (!map.getLayer(FLOW_LAYER_ID)) {
-      // Find the first symbol layer to insert traffic below labels
-      const layers = map.getStyle().layers;
-      let firstSymbolId: string | undefined;
-      for (const layer of layers) {
-        if (layer.type === 'symbol') {
-          firstSymbolId = layer.id;
-          break;
-        }
-      }
-
-      map.addLayer(
-        {
-          id: FLOW_LAYER_ID,
+    // Add traffic flow source and layer
+    if (flowTileUrl) {
+      if (!map.getSource(FLOW_SOURCE_ID)) {
+        map.addSource(FLOW_SOURCE_ID, {
           type: 'raster',
-          source: FLOW_SOURCE_ID,
-          paint: {
-            'raster-opacity': showFlow ? opacity : 0,
+          tiles: [flowTileUrl],
+          tileSize: 256,
+          attribution: '&copy; <a href="https://www.tomtom.com/">TomTom</a>',
+        });
+      }
+
+      if (!map.getLayer(FLOW_LAYER_ID)) {
+        // Find the first symbol layer to insert traffic below labels
+        const layers = map.getStyle()?.layers || [];
+        let firstSymbolId: string | undefined;
+        for (const layer of layers) {
+          if (layer.type === 'symbol') {
+            firstSymbolId = layer.id;
+            break;
+          }
+        }
+
+        map.addLayer(
+          {
+            id: FLOW_LAYER_ID,
+            type: 'raster',
+            source: FLOW_SOURCE_ID,
+            paint: {
+              'raster-opacity': showFlowRef.current ? opacityRef.current : 0,
+            },
           },
-        },
-        firstSymbolId // Insert below labels
-      );
+          firstSymbolId
+        );
+      }
     }
 
-    return () => {
-      try {
-        if (map.getLayer(FLOW_LAYER_ID)) {
-          map.removeLayer(FLOW_LAYER_ID);
-        }
-        if (map.getSource(FLOW_SOURCE_ID)) {
-          map.removeSource(FLOW_SOURCE_ID);
-        }
-      } catch {
-        // Map might be removed already
+    // Add traffic incidents source and layer
+    if (incidentsTileUrl) {
+      if (!map.getSource(INCIDENTS_SOURCE_ID)) {
+        map.addSource(INCIDENTS_SOURCE_ID, {
+          type: 'raster',
+          tiles: [incidentsTileUrl],
+          tileSize: 256,
+          attribution: '&copy; <a href="https://www.tomtom.com/">TomTom</a>',
+        });
       }
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isLoaded, map]);
 
-  // Add traffic incidents layer
+      if (!map.getLayer(INCIDENTS_LAYER_ID)) {
+        map.addLayer({
+          id: INCIDENTS_LAYER_ID,
+          type: 'raster',
+          source: INCIDENTS_SOURCE_ID,
+          paint: {
+            'raster-opacity': showIncidentsRef.current ? opacityRef.current : 0,
+          },
+        });
+      }
+    }
+  }, [map]);
+
+  // Add layers initially and re-add on style change (theme toggle)
   useEffect(() => {
     if (!isLoaded || !map || !isTomTomConfigured()) return;
 
-    const incidentsTileUrl = getTrafficIncidentsTileUrl();
-    if (!incidentsTileUrl) return;
+    // Add layers initially
+    addTrafficLayers();
 
-    // Add traffic incidents source
-    if (!map.getSource(INCIDENTS_SOURCE_ID)) {
-      map.addSource(INCIDENTS_SOURCE_ID, {
-        type: 'raster',
-        tiles: [incidentsTileUrl],
-        tileSize: 256,
-        attribution: '&copy; <a href="https://www.tomtom.com/">TomTom</a>',
-      });
-    }
+    // Re-add layers when style changes (e.g., theme toggle)
+    const handleStyleData = () => {
+      // Use a small delay to ensure the new style is fully loaded
+      setTimeout(() => {
+        addTrafficLayers();
+      }, 100);
+    };
 
-    // Add traffic incidents layer
-    if (!map.getLayer(INCIDENTS_LAYER_ID)) {
-      map.addLayer({
-        id: INCIDENTS_LAYER_ID,
-        type: 'raster',
-        source: INCIDENTS_SOURCE_ID,
-        paint: {
-          'raster-opacity': showIncidents ? opacity : 0,
-        },
-      });
-    }
+    map.on('styledata', handleStyleData);
 
     return () => {
+      map.off('styledata', handleStyleData);
       try {
-        if (map.getLayer(INCIDENTS_LAYER_ID)) {
-          map.removeLayer(INCIDENTS_LAYER_ID);
-        }
-        if (map.getSource(INCIDENTS_SOURCE_ID)) {
-          map.removeSource(INCIDENTS_SOURCE_ID);
-        }
+        if (map.getLayer(FLOW_LAYER_ID)) map.removeLayer(FLOW_LAYER_ID);
+        if (map.getSource(FLOW_SOURCE_ID)) map.removeSource(FLOW_SOURCE_ID);
+        if (map.getLayer(INCIDENTS_LAYER_ID)) map.removeLayer(INCIDENTS_LAYER_ID);
+        if (map.getSource(INCIDENTS_SOURCE_ID)) map.removeSource(INCIDENTS_SOURCE_ID);
       } catch {
         // Map might be removed already
       }
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isLoaded, map]);
+  }, [isLoaded, map, addTrafficLayers]);
 
-  // Update flow layer visibility
+  // Update flow layer visibility when props change
   useEffect(() => {
-    if (!isLoaded || !map || !map.getLayer(FLOW_LAYER_ID)) return;
-    map.setPaintProperty(FLOW_LAYER_ID, 'raster-opacity', showFlow ? opacity : 0);
+    if (!isLoaded || !map) return;
+    try {
+      if (map.getLayer(FLOW_LAYER_ID)) {
+        map.setPaintProperty(FLOW_LAYER_ID, 'raster-opacity', showFlow ? opacity : 0);
+      }
+    } catch {
+      // Layer might not exist yet
+    }
   }, [isLoaded, map, showFlow, opacity]);
 
-  // Update incidents layer visibility
+  // Update incidents layer visibility when props change
   useEffect(() => {
-    if (!isLoaded || !map || !map.getLayer(INCIDENTS_LAYER_ID)) return;
-    map.setPaintProperty(INCIDENTS_LAYER_ID, 'raster-opacity', showIncidents ? opacity : 0);
+    if (!isLoaded || !map) return;
+    try {
+      if (map.getLayer(INCIDENTS_LAYER_ID)) {
+        map.setPaintProperty(INCIDENTS_LAYER_ID, 'raster-opacity', showIncidents ? opacity : 0);
+      }
+    } catch {
+      // Layer might not exist yet
+    }
   }, [isLoaded, map, showIncidents, opacity]);
 
   return null;
