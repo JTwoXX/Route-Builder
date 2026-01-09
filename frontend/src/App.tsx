@@ -6,6 +6,7 @@ import { Traffic } from "@/components/TrafficLayer";
 import { useRouteStore } from "@/stores/routeStore";
 import { reverseGeocode } from "@/lib/api/tomtom";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { Home } from 'lucide-react';
 import './App.css';
 
 function StopMarker({ sequence, isSelected, priority }: { sequence: number; isSelected?: boolean; priority?: string }) {
@@ -56,9 +57,19 @@ function MapClickHandler({ enabled, onMapClick }: { enabled: boolean; onMapClick
   return null;
 }
 
+function StartMarker() {
+  return (
+    <div className="flex items-center justify-center w-10 h-10 rounded-full bg-green-600 font-bold text-sm shadow-lg border-2 border-white text-white">
+      <Home className="h-5 w-5" />
+    </div>
+  );
+}
+
 function App() {
   const [addingByClick, setAddingByClick] = useState(false);
   const stops = useRouteStore((s) => s.stops);
+  const startLocation = useRouteStore((s) => s.startLocation);
+  const routeGeometry = useRouteStore((s) => s.routeGeometry);
   const selectedStopId = useRouteStore((s) => s.selectedStopId);
   const selectStop = useRouteStore((s) => s.selectStop);
   const addStop = useRouteStore((s) => s.addStop);
@@ -76,26 +87,41 @@ function App() {
     setAddingByClick(false);
   }, [addStop]);
 
-  // Calculate center from stops or default to Illinois (Springfield, IL)
+  // Calculate center from stops/startLocation or default to Illinois (Springfield, IL)
   const center: [number, number] = useMemo(() => {
-    if (stops.length > 0) {
+    const allPoints = [
+      ...(startLocation ? [{ longitude: startLocation.longitude, latitude: startLocation.latitude }] : []),
+      ...stops,
+    ];
+    if (allPoints.length > 0) {
       return [
-        stops.reduce((sum, s) => sum + s.longitude, 0) / stops.length,
-        stops.reduce((sum, s) => sum + s.latitude, 0) / stops.length,
+        allPoints.reduce((sum, s) => sum + s.longitude, 0) / allPoints.length,
+        allPoints.reduce((sum, s) => sum + s.latitude, 0) / allPoints.length,
       ];
     }
     return [-89.6501, 39.7817]; // Springfield, Illinois
-  }, [stops]);
+  }, [stops, startLocation]);
 
   // Build route coordinates for polyline
+  // Use TomTom routeGeometry if available (actual road path), otherwise straight lines
   const routeCoordinates: [number, number][] = useMemo(() => {
-    const coords = stops.map(s => [s.longitude, s.latitude] as [number, number]);
-    // If round trip, add first stop at end
-    if (settings.roundTrip && coords.length >= 2) {
-      coords.push(coords[0]);
+    if (routeGeometry && routeGeometry.length > 0) {
+      return routeGeometry;
+    }
+
+    // Fallback to straight lines between points
+    const coords: [number, number][] = [];
+    if (startLocation) {
+      coords.push([startLocation.longitude, startLocation.latitude]);
+    }
+    coords.push(...stops.map(s => [s.longitude, s.latitude] as [number, number]));
+
+    // If round trip, add start back at end
+    if (settings.roundTrip && coords.length >= 2 && startLocation) {
+      coords.push([startLocation.longitude, startLocation.latitude]);
     }
     return coords;
-  }, [stops, settings.roundTrip]);
+  }, [stops, startLocation, routeGeometry, settings.roundTrip]);
 
   return (
     <TooltipProvider>
@@ -133,6 +159,28 @@ function App() {
                 width={4}
                 opacity={0.8}
               />
+            )}
+
+            {/* Start Location Marker */}
+            {startLocation && (
+              <MapMarker
+                longitude={startLocation.longitude}
+                latitude={startLocation.latitude}
+              >
+                <MarkerContent>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <div>
+                        <StartMarker />
+                      </div>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p className="font-medium">Start Location</p>
+                      <p className="text-xs text-muted-foreground">{startLocation.address}</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </MarkerContent>
+              </MapMarker>
             )}
 
             {/* Stop Markers */}

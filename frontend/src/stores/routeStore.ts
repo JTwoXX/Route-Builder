@@ -1,11 +1,18 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import type { Stop, Route, OptimizationSettings } from '@/lib/types';
+import type { Stop, Route, OptimizationSettings, StartLocation } from '@/lib/types';
+import { calculateOptimizedRoute, calculateRoute } from '@/lib/api/tomtom';
 
 interface RouteState {
     // Current route being planned
     stops: Stop[];
     currentRoute: Route | null;
+    startLocation: StartLocation | null;
+
+    // Optimized route data from TomTom
+    routeGeometry: [number, number][] | null;
+    optimizedDistance: number | null; // miles
+    optimizedDuration: number | null; // minutes (travel time only)
 
     // Saved routes (persisted to localStorage)
     routes: Route[];
@@ -24,8 +31,10 @@ interface RouteState {
     reorderStops: (stops: Stop[]) => void;
     clearStops: () => void;
     selectStop: (id: string | null) => void;
+    setStartLocation: (location: StartLocation | null) => void;
     setOptimizationSettings: (settings: Partial<OptimizationSettings>) => void;
-    optimizeRoute: () => void;
+    optimizeRoute: () => Promise<void>;
+    recalculateRoute: () => Promise<void>;
     saveRoute: (name: string) => void;
     loadRoute: (route: Route) => void;
     deleteRoute: (id: string) => void;
@@ -40,6 +49,10 @@ export const useRouteStore = create<RouteState>()(
         (set, get) => ({
             stops: [],
             currentRoute: null,
+            startLocation: null,
+            routeGeometry: null,
+            optimizedDistance: null,
+            optimizedDuration: null,
             routes: [],
             optimizationSettings: {
                 optimizationType: 'shortest_time',
@@ -61,13 +74,13 @@ export const useRouteStore = create<RouteState>()(
                     sequence: stops.length + 1,
                     serviceTime: stopData.serviceTime ?? settings.defaultServiceTime,
                 };
-                set({ stops: [...stops, newStop] });
+                set({ stops: [...stops, newStop], routeGeometry: null, optimizedDistance: null, optimizedDuration: null });
             },
 
             removeStop: (id) => {
                 const stops = get().stops.filter(s => s.id !== id);
                 const resequenced = stops.map((s, i) => ({ ...s, sequence: i + 1 }));
-                set({ stops: resequenced });
+                set({ stops: resequenced, routeGeometry: null, optimizedDistance: null, optimizedDuration: null });
             },
 
             updateStop: (id, updates) => {
@@ -79,15 +92,19 @@ export const useRouteStore = create<RouteState>()(
 
             reorderStops: (stops) => {
                 const resequenced = stops.map((s, i) => ({ ...s, sequence: i + 1 }));
-                set({ stops: resequenced });
+                set({ stops: resequenced, routeGeometry: null, optimizedDistance: null, optimizedDuration: null });
             },
 
             clearStops: () => {
-                set({ stops: [], currentRoute: null, selectedStopId: null });
+                set({ stops: [], currentRoute: null, selectedStopId: null, routeGeometry: null, optimizedDistance: null, optimizedDuration: null });
             },
 
             selectStop: (id) => {
                 set({ selectedStopId: id });
+            },
+
+            setStartLocation: (location) => {
+                set({ startLocation: location, routeGeometry: null, optimizedDistance: null, optimizedDuration: null });
             },
 
             setOptimizationSettings: (settings) => {
@@ -96,41 +113,112 @@ export const useRouteStore = create<RouteState>()(
                 });
             },
 
-            optimizeRoute: () => {
-                set({ isOptimizing: true });
+            optimizeRoute: async () => {
+                const { stops, startLocation, optimizationSettings } = get();
 
-                const stops = get().stops;
-                if (stops.length <= 2) {
-                    set({ isOptimizing: false });
+                if (!startLocation) {
+                    alert('Please set a start location before optimizing the route.');
                     return;
                 }
 
-                const optimized: Stop[] = [];
-                const remaining = [...stops];
-
-                let current = remaining.shift()!;
-                optimized.push({ ...current, sequence: 1 });
-
-                while (remaining.length > 0) {
-                    let nearestIdx = 0;
-                    let nearestDist = Infinity;
-
-                    for (let i = 0; i < remaining.length; i++) {
-                        const dist = Math.sqrt(
-                            Math.pow(remaining[i].latitude - current.latitude, 2) +
-                            Math.pow(remaining[i].longitude - current.longitude, 2)
-                        );
-                        if (dist < nearestDist) {
-                            nearestDist = dist;
-                            nearestIdx = i;
-                        }
-                    }
-
-                    current = remaining.splice(nearestIdx, 1)[0];
-                    optimized.push({ ...current, sequence: optimized.length + 1 });
+                if (stops.length < 1) {
+                    return;
                 }
 
-                set({ stops: optimized, isOptimizing: false });
+                set({ isOptimizing: true });
+
+                try {
+                    // Use TomTom API to calculate optimized route
+                    const result = await calculateOptimizedRoute(
+                        { latitude: startLocation.latitude, longitude: startLocation.longitude },
+                        stops.map(s => ({ latitude: s.latitude, longitude: s.longitude })),
+                        {
+                            avoidHighways: optimizationSettings.avoidHighways,
+                            avoidTolls: optimizationSettings.avoidTolls,
+                            computeBestOrder: true,
+                        }
+                    );
+
+                    if (result) {
+                        // Reorder stops based on optimized order
+                        const reorderedStops = result.optimizedOrder.map((originalIndex, newIndex) => ({
+                            ...stops[originalIndex],
+                            sequence: newIndex + 1,
+                        }));
+
+                        set({
+                            stops: reorderedStops,
+                            routeGeometry: result.routeGeometry,
+                            optimizedDistance: result.totalDistanceMiles,
+                            optimizedDuration: result.totalDurationMinutes,
+                            isOptimizing: false,
+                        });
+                    } else {
+                        // Fallback to simple nearest-neighbor if API fails
+                        console.warn('TomTom optimization failed, using fallback algorithm');
+                        const optimized: Stop[] = [];
+                        const remaining = [...stops];
+
+                        let current = remaining.shift()!;
+                        optimized.push({ ...current, sequence: 1 });
+
+                        while (remaining.length > 0) {
+                            let nearestIdx = 0;
+                            let nearestDist = Infinity;
+
+                            for (let i = 0; i < remaining.length; i++) {
+                                const dist = Math.sqrt(
+                                    Math.pow(remaining[i].latitude - current.latitude, 2) +
+                                    Math.pow(remaining[i].longitude - current.longitude, 2)
+                                );
+                                if (dist < nearestDist) {
+                                    nearestDist = dist;
+                                    nearestIdx = i;
+                                }
+                            }
+
+                            current = remaining.splice(nearestIdx, 1)[0];
+                            optimized.push({ ...current, sequence: optimized.length + 1 });
+                        }
+
+                        set({ stops: optimized, isOptimizing: false });
+                    }
+                } catch (error) {
+                    console.error('Route optimization error:', error);
+                    set({ isOptimizing: false });
+                }
+            },
+
+            recalculateRoute: async () => {
+                const { stops, startLocation, optimizationSettings } = get();
+
+                if (!startLocation || stops.length < 1) {
+                    set({ routeGeometry: null, optimizedDistance: null, optimizedDuration: null });
+                    return;
+                }
+
+                try {
+                    // Calculate route without reordering (just get geometry and times)
+                    const waypoints = [
+                        { latitude: startLocation.latitude, longitude: startLocation.longitude },
+                        ...stops.map(s => ({ latitude: s.latitude, longitude: s.longitude })),
+                    ];
+
+                    const result = await calculateRoute(waypoints, {
+                        avoidHighways: optimizationSettings.avoidHighways,
+                        avoidTolls: optimizationSettings.avoidTolls,
+                    });
+
+                    if (result) {
+                        set({
+                            routeGeometry: result.geometry,
+                            optimizedDistance: result.distanceMiles,
+                            optimizedDuration: result.durationMinutes,
+                        });
+                    }
+                } catch (error) {
+                    console.error('Route calculation error:', error);
+                }
             },
 
             saveRoute: (name) => {
@@ -185,7 +273,7 @@ export const useRouteStore = create<RouteState>()(
             },
 
             newRoute: () => {
-                set({ stops: [], currentRoute: null, selectedStopId: null });
+                set({ stops: [], currentRoute: null, selectedStopId: null, routeGeometry: null, optimizedDistance: null, optimizedDuration: null });
             },
         }),
         {
@@ -193,6 +281,7 @@ export const useRouteStore = create<RouteState>()(
             partialize: (state) => ({
                 routes: state.routes,
                 optimizationSettings: state.optimizationSettings,
+                startLocation: state.startLocation,
             }),
         }
     )

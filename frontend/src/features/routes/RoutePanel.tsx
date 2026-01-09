@@ -6,32 +6,39 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useRouteStore } from '@/stores/routeStore';
 import { StopCard } from './StopCard';
 import { AddStopForm } from './AddStopForm';
+import { StartLocationForm } from './StartLocationForm';
 import { OptimizationPanel } from './OptimizationPanel';
 import { CSVImport } from './CSVImport';
 import { SaveRouteDialog } from './SaveRouteDialog';
-import type { RouteStats } from '@/lib/types';
 
 interface RoutePanelProps {
     onAddByMapClick?: () => void;
 }
 
-function RouteStatsDisplay({ stops }: { stops: { latitude: number; longitude: number; serviceTime?: number }[] }) {
-    let totalDistance = 0;
-    for (let i = 1; i < stops.length; i++) {
-        const dx = stops[i].longitude - stops[i - 1].longitude;
-        const dy = stops[i].latitude - stops[i - 1].latitude;
-        totalDistance += Math.sqrt(dx * dx + dy * dy) * 111;
+function RouteStatsDisplay({ stops, optimizedDistance, optimizedDuration }: {
+    stops: { latitude: number; longitude: number; serviceTime?: number }[];
+    optimizedDistance?: number; // miles from TomTom API
+    optimizedDuration?: number; // minutes from TomTom API
+}) {
+    // Use optimized values from TomTom if available, otherwise estimate
+    let totalDistanceMiles = optimizedDistance;
+    let travelDuration = optimizedDuration;
+
+    if (totalDistanceMiles === undefined) {
+        // Estimate using straight-line distance (converted to miles)
+        let totalDistanceKm = 0;
+        for (let i = 1; i < stops.length; i++) {
+            const dx = stops[i].longitude - stops[i - 1].longitude;
+            const dy = stops[i].latitude - stops[i - 1].latitude;
+            totalDistanceKm += Math.sqrt(dx * dx + dy * dy) * 111;
+        }
+        totalDistanceMiles = totalDistanceKm * 0.621371; // Convert km to miles
+        travelDuration = Math.round(totalDistanceKm * 2); // Rough estimate
     }
 
     // Use actual user-entered service times from each stop
     const totalServiceTime = stops.reduce((sum, s) => sum + (s.serviceTime || 0), 0);
-
-    const stats: RouteStats = {
-        totalDistance: Math.round(totalDistance * 10) / 10,
-        totalDuration: Math.round(totalDistance * 2) + totalServiceTime,
-        totalStops: stops.length,
-        avgStopDuration: stops.length > 0 ? Math.round(totalServiceTime / stops.length) : 0,
-    };
+    const totalDuration = (travelDuration || 0) + totalServiceTime;
 
     if (stops.length < 2) return null;
 
@@ -39,18 +46,18 @@ function RouteStatsDisplay({ stops }: { stops: { latitude: number; longitude: nu
         <div className="grid grid-cols-2 gap-2 p-3 bg-muted/50 rounded-lg text-sm">
             <div>
                 <span className="text-muted-foreground">Distance:</span>
-                <span className="ml-1 font-medium">{stats.totalDistance} km</span>
+                <span className="ml-1 font-medium">{totalDistanceMiles.toFixed(1)} mi</span>
             </div>
             <div>
-                <span className="text-muted-foreground">Duration:</span>
-                <span className="ml-1 font-medium">{stats.totalDuration} min</span>
+                <span className="text-muted-foreground">Travel Time:</span>
+                <span className="ml-1 font-medium">{travelDuration || 0} min</span>
             </div>
             <div>
-                <span className="text-muted-foreground">Stops:</span>
-                <span className="ml-1 font-medium">{stats.totalStops}</span>
+                <span className="text-muted-foreground">Total Duration:</span>
+                <span className="ml-1 font-medium">{totalDuration} min</span>
             </div>
             <div>
-                <span className="text-muted-foreground">Total Stop Time:</span>
+                <span className="text-muted-foreground">Stop Time:</span>
                 <span className="ml-1 font-medium">{totalServiceTime} min</span>
             </div>
         </div>
@@ -128,8 +135,11 @@ export function RoutePanel({ onAddByMapClick }: RoutePanelProps) {
 
     const stops = useRouteStore((s) => s.stops);
     const currentRoute = useRouteStore((s) => s.currentRoute);
+    const startLocation = useRouteStore((s) => s.startLocation);
     const selectedStopId = useRouteStore((s) => s.selectedStopId);
     const isOptimizing = useRouteStore((s) => s.isOptimizing);
+    const optimizedDistance = useRouteStore((s) => s.optimizedDistance);
+    const optimizedDuration = useRouteStore((s) => s.optimizedDuration);
     const selectStop = useRouteStore((s) => s.selectStop);
     const removeStop = useRouteStore((s) => s.removeStop);
     const updateStop = useRouteStore((s) => s.updateStop);
@@ -160,6 +170,11 @@ export function RoutePanel({ onAddByMapClick }: RoutePanelProps) {
                     </TabsList>
 
                     <TabsContent value="stops" className="flex-1 overflow-hidden flex flex-col m-0">
+                        {/* Start Location Section */}
+                        <div className="p-4 border-b bg-muted/30">
+                            <StartLocationForm />
+                        </div>
+
                         {/* Add Stop Section */}
                         <div className="p-4 border-b">
                             <h3 className="font-medium mb-3 flex items-center gap-2">
@@ -213,17 +228,21 @@ export function RoutePanel({ onAddByMapClick }: RoutePanelProps) {
                         </div>
 
                         {/* Stats & Actions */}
-                        {stops.length >= 2 && (
+                        {stops.length >= 1 && (
                             <div className="p-4 border-t space-y-3">
-                                <RouteStatsDisplay stops={stops} />
+                                <RouteStatsDisplay
+                                    stops={stops}
+                                    optimizedDistance={optimizedDistance ?? undefined}
+                                    optimizedDuration={optimizedDuration ?? undefined}
+                                />
 
                                 <Button
                                     className="w-full"
                                     onClick={optimizeRoute}
-                                    disabled={isOptimizing}
+                                    disabled={isOptimizing || !startLocation}
                                 >
                                     <Sparkles className="h-4 w-4 mr-2" />
-                                    {isOptimizing ? 'Optimizing...' : 'Optimize Route'}
+                                    {isOptimizing ? 'Optimizing...' : !startLocation ? 'Set Start Location First' : 'Optimize Route'}
                                 </Button>
 
                                 <div className="flex gap-2">

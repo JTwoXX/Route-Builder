@@ -14,6 +14,13 @@ export interface Stop {
     priority?: 'high' | 'medium' | 'low';
 }
 
+export interface StartLocation {
+    address: string;
+    latitude: number;
+    longitude: number;
+    name?: string;
+}
+
 export interface Route {
     id: string;
     name: string;
