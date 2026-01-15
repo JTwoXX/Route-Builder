@@ -35,6 +35,213 @@ interface RouteState {
 
 const generateId = () => Math.random().toString(36).substring(2, 11);
 
+/**
+ * Calculate distance between two coordinates using Haversine formula
+ * Returns distance in kilometers
+ */
+function haversineDistance(lat1: number, lon1: number, lat2: number, lon2: number): number {
+    const R = 6371; // Earth's radius in km
+    const dLat = (lat2 - lat1) * Math.PI / 180;
+    const dLon = (lon2 - lon1) * Math.PI / 180;
+    const a =
+        Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+        Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+        Math.sin(dLon / 2) * Math.sin(dLon / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    return R * c;
+}
+
+/**
+ * Find the optimal starting point (the stop closest to the centroid or edge)
+ */
+function findBestStartingPoint(stops: Stop[]): number {
+    if (stops.length <= 1) return 0;
+
+    // Calculate centroid
+    const centroid = {
+        lat: stops.reduce((sum, s) => sum + s.latitude, 0) / stops.length,
+        lon: stops.reduce((sum, s) => sum + s.longitude, 0) / stops.length,
+    };
+
+    // Find the stop furthest from centroid (edge of cluster) as starting point
+    // This often produces better routes than starting from center
+    let maxDist = -1;
+    let bestIdx = 0;
+
+    for (let i = 0; i < stops.length; i++) {
+        const dist = haversineDistance(
+            stops[i].latitude, stops[i].longitude,
+            centroid.lat, centroid.lon
+        );
+        if (dist > maxDist) {
+            maxDist = dist;
+            bestIdx = i;
+        }
+    }
+
+    return bestIdx;
+}
+
+/**
+ * Improved nearest neighbor algorithm with better starting point
+ */
+function nearestNeighborOptimization(stops: Stop[]): Stop[] {
+    if (stops.length <= 2) return stops;
+
+    const remaining = [...stops];
+    const optimized: Stop[] = [];
+
+    // Start from the best starting point (edge of cluster)
+    const startIdx = findBestStartingPoint(remaining);
+    let current = remaining.splice(startIdx, 1)[0];
+    optimized.push(current);
+
+    while (remaining.length > 0) {
+        let nearestIdx = 0;
+        let nearestDist = Infinity;
+
+        for (let i = 0; i < remaining.length; i++) {
+            const dist = haversineDistance(
+                current.latitude, current.longitude,
+                remaining[i].latitude, remaining[i].longitude
+            );
+            if (dist < nearestDist) {
+                nearestDist = dist;
+                nearestIdx = i;
+            }
+        }
+
+        current = remaining.splice(nearestIdx, 1)[0];
+        optimized.push(current);
+    }
+
+    return optimized;
+}
+
+/**
+ * 2-opt improvement: reverse segments to reduce crossings and backtracking
+ */
+function twoOptImprovement(stops: Stop[]): Stop[] {
+    if (stops.length <= 3) return stops;
+
+    let improved = [...stops];
+    let betterFound = true;
+    let iterations = 0;
+    const maxIterations = 100; // Prevent infinite loops
+
+    while (betterFound && iterations < maxIterations) {
+        betterFound = false;
+        iterations++;
+
+        for (let i = 0; i < improved.length - 2; i++) {
+            for (let j = i + 2; j < improved.length; j++) {
+                // Calculate current distance for edges (i, i+1) and (j, j+1 or end)
+                const currentDist =
+                    haversineDistance(
+                        improved[i].latitude, improved[i].longitude,
+                        improved[i + 1].latitude, improved[i + 1].longitude
+                    ) +
+                    (j + 1 < improved.length
+                        ? haversineDistance(
+                            improved[j].latitude, improved[j].longitude,
+                            improved[j + 1].latitude, improved[j + 1].longitude
+                        )
+                        : 0
+                    );
+
+                // Calculate new distance if we reverse the segment between i+1 and j
+                const newDist =
+                    haversineDistance(
+                        improved[i].latitude, improved[i].longitude,
+                        improved[j].latitude, improved[j].longitude
+                    ) +
+                    (j + 1 < improved.length
+                        ? haversineDistance(
+                            improved[i + 1].latitude, improved[i + 1].longitude,
+                            improved[j + 1].latitude, improved[j + 1].longitude
+                        )
+                        : 0
+                    );
+
+                // If reversing improves the route, do it
+                if (newDist < currentDist - 0.001) { // Small threshold to avoid floating point issues
+                    // Reverse the segment from i+1 to j
+                    const newRoute = [
+                        ...improved.slice(0, i + 1),
+                        ...improved.slice(i + 1, j + 1).reverse(),
+                        ...improved.slice(j + 1)
+                    ];
+                    improved = newRoute;
+                    betterFound = true;
+                    break;
+                }
+            }
+            if (betterFound) break;
+        }
+    }
+
+    return improved;
+}
+
+/**
+ * Group nearby stops (within ~50 meters) together
+ * This ensures stops at the same address are visited consecutively
+ */
+function groupNearbyStops(stops: Stop[]): Stop[] {
+    if (stops.length <= 2) return stops;
+
+    const PROXIMITY_THRESHOLD = 0.05; // ~50 meters in km
+    const grouped: Stop[] = [];
+    const used = new Set<number>();
+
+    for (let i = 0; i < stops.length; i++) {
+        if (used.has(i)) continue;
+
+        // Add this stop
+        grouped.push(stops[i]);
+        used.add(i);
+
+        // Find all nearby stops and add them immediately after
+        for (let j = i + 1; j < stops.length; j++) {
+            if (used.has(j)) continue;
+
+            const dist = haversineDistance(
+                stops[i].latitude, stops[i].longitude,
+                stops[j].latitude, stops[j].longitude
+            );
+
+            if (dist < PROXIMITY_THRESHOLD) {
+                grouped.push(stops[j]);
+                used.add(j);
+            }
+        }
+    }
+
+    return grouped;
+}
+
+/**
+ * Main optimization function combining multiple strategies
+ */
+function optimizeStops(stops: Stop[]): Stop[] {
+    if (stops.length <= 2) return stops;
+
+    // Step 1: Group nearby/same-address stops
+    const grouped = groupNearbyStops(stops);
+
+    // Step 2: Apply nearest neighbor algorithm with smart starting point
+    const nnOptimized = nearestNeighborOptimization(grouped);
+
+    // Step 3: Apply 2-opt improvement to reduce backtracking
+    const twoOptOptimized = twoOptImprovement(nnOptimized);
+
+    // Re-sequence the stops
+    return twoOptOptimized.map((stop, index) => ({
+        ...stop,
+        sequence: index + 1
+    }));
+}
+
 export const useRouteStore = create<RouteState>()(
     persist(
         (set, get) => ({
@@ -100,34 +307,28 @@ export const useRouteStore = create<RouteState>()(
                 set({ isOptimizing: true });
 
                 const stops = get().stops;
+                const settings = get().optimizationSettings;
+
                 if (stops.length <= 2) {
                     set({ isOptimizing: false });
                     return;
                 }
 
-                const optimized: Stop[] = [];
-                const remaining = [...stops];
+                // Run optimization
+                let optimized = optimizeStops(stops);
 
-                let current = remaining.shift()!;
-                optimized.push({ ...current, sequence: 1 });
+                // Handle round trip - if enabled, the route should end near the start
+                if (settings.roundTrip && optimized.length > 2) {
+                    // Already optimized, round trip display is handled in the UI
+                }
 
-                while (remaining.length > 0) {
-                    let nearestIdx = 0;
-                    let nearestDist = Infinity;
-
-                    for (let i = 0; i < remaining.length; i++) {
-                        const dist = Math.sqrt(
-                            Math.pow(remaining[i].latitude - current.latitude, 2) +
-                            Math.pow(remaining[i].longitude - current.longitude, 2)
-                        );
-                        if (dist < nearestDist) {
-                            nearestDist = dist;
-                            nearestIdx = i;
-                        }
-                    }
-
-                    current = remaining.splice(nearestIdx, 1)[0];
-                    optimized.push({ ...current, sequence: optimized.length + 1 });
+                // Handle lock last destination - keep the last stop in place
+                if (settings.lockLastDestination && stops.length > 1) {
+                    const originalLast = stops[stops.length - 1];
+                    // Remove the original last stop from optimized
+                    optimized = optimized.filter(s => s.id !== originalLast.id);
+                    // Add it back at the end
+                    optimized.push({ ...originalLast, sequence: optimized.length + 1 });
                 }
 
                 set({ stops: optimized, isOptimizing: false });
